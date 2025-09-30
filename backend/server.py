@@ -65,6 +65,19 @@ class SearchResponse(BaseModel):
     error: Optional[str] = None
 
 
+class ContactSalesRequest(BaseModel):
+    name: str
+    email: str
+    company: str
+    message: str
+
+
+class ContactSalesResponse(BaseModel):
+    success: bool
+    message: str
+    error: Optional[str] = None
+
+
 def _ensure_db(request: Request):
     try:
         return request.app.state.db
@@ -234,6 +247,46 @@ async def get_agent_capabilities(request: Request):
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("Error getting capabilities")
         return {"success": False, "error": str(exc)}
+
+
+@api_router.post("/chat-demo", response_model=ChatResponse)
+async def chat_demo(chat_request: ChatRequest, request: Request):
+    """Dedicated endpoint for website AI demo."""
+    chat_request.agent_type = "chat"
+    return await chat_with_agent(chat_request, request)
+
+
+@api_router.post("/contact-sales", response_model=ContactSalesResponse)
+async def contact_sales(contact: ContactSalesRequest, request: Request):
+    """Handle contact sales form submissions."""
+    try:
+        db = _ensure_db(request)
+
+        contact_data = {
+            "id": str(uuid.uuid4()),
+            "name": contact.name,
+            "email": contact.email,
+            "company": contact.company,
+            "message": contact.message,
+            "timestamp": datetime.now(timezone.utc),
+            "status": "new"
+        }
+
+        await db.contact_sales.insert_one(contact_data)
+
+        logger.info(f"New contact sales submission from {contact.email}")
+
+        return ContactSalesResponse(
+            success=True,
+            message="Thank you for your interest! Our team will contact you shortly."
+        )
+    except Exception as exc:
+        logger.exception("Error in contact-sales endpoint")
+        return ContactSalesResponse(
+            success=False,
+            message="",
+            error="Failed to submit contact form. Please try again."
+        )
 
 
 app.include_router(api_router)
